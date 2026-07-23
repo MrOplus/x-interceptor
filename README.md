@@ -216,7 +216,8 @@ Hook: UserTweets · 20 tweets · 3 pruned · 4 rules live · 2s ago — filterin
 
 | Status | Meaning |
 |---|---|
-| *Hook has not reported yet* | No x.com tab has loaded a payload since the extension was reloaded. The hook only installs at page load — reload the tab. |
+| *Hook has not reported yet* | No x.com tab is running the hook. It only installs at page load — reload the tab. |
+| *installed, no payload fetched yet* | The hook is alive and holds your rules; the tab just hasn't fetched anything since. Scroll it. |
 | *hook never received config* | The content script is running on stale defaults. Reload the tab. |
 | *rules not live in the page yet* | Rules are saved here but the open tab predates them. Reload the tab. |
 | *no saved rules* | The editor has unsaved edits — press **Save rules**. The preview scores drafts, so it looks like it's working before you save. |
@@ -228,6 +229,10 @@ Two things that look like bugs but aren't:
   The per-term hit table shows `0` for terms that match nothing captured.
 - **Filtering applies to newly fetched payloads.** Already-rendered posts stay
   until the tab reloads.
+- **"filtered live" and the preview count different things.** The header counts
+  entries actually removed from live payloads since install; the preview scores
+  your rules against the whole capture store, most of which was captured before
+  filtering was on. The preview number being far larger is expected.
 
 ## Privacy
 

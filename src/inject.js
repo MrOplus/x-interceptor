@@ -29,6 +29,9 @@
     if (!data || data.__channel !== CHANNEL || data.type !== 'config') return;
     config = { ...config, ...data.config };
     configReceived = true;
+    // Report straight away: an idle tab may not fetch anything for minutes, and
+    // until it does the dashboard has no way to tell a live hook from a dead one.
+    reportStatus({});
   });
 
   const post = (type, payload) => {
@@ -206,22 +209,28 @@
       }
     }
 
-    // Reported every payload so the dashboard can show what the hook actually
-    // believes — without it, a config that never arrived is indistinguishable
-    // from rules that simply match nothing.
+    reportStatus({ op, tweets: tweets.length, removed });
+
+    return { body, tweets };
+  }
+
+  /**
+   * What this hook actually believes, surfaced in the dashboard. Without it a
+   * config that never arrived is indistinguishable from rules that simply match
+   * nothing — both just prune zero.
+   */
+  function reportStatus({ op = null, tweets = 0, removed = 0 }) {
     post('status', {
       op,
-      tweets: tweets.length,
+      tweets,
       removed,
-      filtering,
+      filtering: Boolean(config.hideBlocked) && hasRules(config),
       configReceived,
       rules:
         (config.blockNames?.length || 0) +
         (config.blockUsers?.length || 0) +
         (config.blockKeywords?.length || 0),
     });
-
-    return { body, tweets };
   }
 
   // --------------------------------------------------------------- fetch patch

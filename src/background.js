@@ -20,19 +20,16 @@ const DEFAULT_CONFIG = {
 let buffer = [];
 let flushTimer = null;
 
-/** Latest hook report, throttled — a busy timeline fires several GraphQL calls
- *  a second and each one reports. */
-let pendingStatus = null;
-let statusTimer = null;
-
+/**
+ * Written straight through, not throttled. A bare setTimeout does not keep an
+ * MV3 service worker alive, so a deferred write loses the report whenever the
+ * worker is torn down before it fires — which is exactly what happens after a
+ * burst of activity followed by an idle tab. storage.local has no write-rate
+ * quota, and these are a handful of small writes per second at worst.
+ */
 function writeStatus(status) {
   if (!status) return;
-  pendingStatus = { ...status, at: Date.now() };
-  if (statusTimer) return;
-  statusTimer = setTimeout(() => {
-    statusTimer = null;
-    chrome.storage.local.set({ lastStatus: pendingStatus });
-  }, 1000);
+  chrome.storage.local.set({ lastStatus: { ...status, at: Date.now() } });
 }
 
 /** Serialized read-modify-write; the counter lives in storage because the

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Interceptor",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Intercepts X/Twitter GraphQL responses and extracts tweets + usernames before they render.",
   "permissions": ["storage"],
   "host_permissions": ["https://x.com/*", "https://twitter.com/*"],

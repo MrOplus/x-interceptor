@@ -192,13 +192,11 @@ function renderHookStatus() {
     return;
   }
 
-  const parts = [
-    lastStatus.op || 'payload',
-    `${lastStatus.tweets} tweets`,
-    `${lastStatus.removed} pruned`,
-    `${lastStatus.rules} rules live`,
-    ago(lastStatus.at),
-  ];
+  const parts = lastStatus.op
+    ? [lastStatus.op, `${lastStatus.tweets} tweets`, `${lastStatus.removed} pruned`]
+    : ['installed, no payload fetched yet'];
+
+  parts.push(`${lastStatus.rules} rules live`, ago(lastStatus.at));
 
   if (!lastStatus.configReceived) {
     dot.classList.add('warn');
