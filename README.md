@@ -1,0 +1,212 @@
+# x-interceptor
+
+A Chrome extension that reads X/Twitter's GraphQL traffic, extracts structured
+tweet and account data, and can drop unwanted posts from the payload **before
+the page renders them**.
+
+No scraping the DOM, no flicker from post-render removal — filtered posts never
+reach React at all.
+
+## Features
+
+- **Structured capture** — tweets, authors, engagement counts and timestamps
+  pulled straight from the API responses the page is already fetching
+- **Pre-render filtering** — rules are applied to the JSON in flight, so blocked
+  posts are never rendered
+- **Blocklist or allowlist** — hide what matches, or show *only* what matches
+- **Match on display name**, handle, or tweet text — including emoji, so
+  `🚀` or `❤️` in a display name is a first-class rule
+- **Live rule preview** — score draft rules against everything already captured
+  before saving them
+- **Scoped search + JSON export** over the capture store
+- **Fully local** — no servers, no telemetry, no network requests of its own
+
+## Install
+
+Not on the Chrome Web Store. Load it unpacked:
+
+1. Clone this repo
+2. Open `chrome://extensions` and enable **Developer mode**
+3. **Load unpacked** → select the repo folder
+4. Open [x.com](https://x.com) and scroll
+
+Reload the extension *and* the X tab after pulling changes — the hook only
+installs at `document_start`.
+
+Chrome 111+ (or any current Chromium: Edge, Brave, Vivaldi). Firefox is not
+supported; it lacks `world: "MAIN"` content scripts.
+
+## Usage
+
+Click the toolbar icon for a compact viewer, or **Dashboard ↗** for the full
+window — rule editor on the left, live preview on the right. The dashboard is
+also under right-click → Options.
+
+### Rules
+
+Three scopes, each **one term per line**. Blank lines and `#` comments are
+ignored, so lists can be grouped and annotated:
+
+```
+🚀
+💎
+
+# promo spam
+DM for promo
+link in bio
+```
+
+| Scope | Matching |
+|---|---|
+| Display name contains | substring |
+| Handles | exact |
+| Tweet text contains | substring |
+
+Mode is *Hide tweets that match* (blocklist) or *Show only tweets that match*
+(allowlist — useful for building a feed of a single cohort). With no rules set
+nothing is filtered in either mode, so allowlist mode can't accidentally empty
+your timeline.
+
+Rules only take effect on live traffic once **Filter before render** is on.
+
+### Preview
+
+The preview scores rules **as typed**, before saving, against everything already
+captured:
+
+- How many captured tweets the draft would hide vs. show, with a percentage
+- Row highlighting — red for removed, green for kept — and a badge per row
+  naming which scope matched
+- **All / Matched / Unmatched** tabs, composable with the search box
+- A per-term hit table, with zero-hit terms called out — that's how you catch an
+  emoji that doesn't actually appear in any captured display name before the
+  rule goes live
+
+Nothing applies until **Save rules**. The page updates live from storage, so you
+can scroll a timeline in another window and watch the sample grow; an
+in-progress edit is never overwritten by that sync.
+
+### Search
+
+| Query | Matches |
+|---|---|
+| `name:🚀` | display name contains the emoji |
+| `name:DM for promo` | display name contains the phrase |
+| `text:airdrop` | tweet body |
+| `@elonmusk` | handle |
+| `airdrop` | any of the three |
+
+**Export** writes whatever is on screen — search and view tab included — so
+`name:🚀` doubles as an extraction query.
+
+## How it works
+
+X is a SPA: every timeline, thread, profile and search result arrives as JSON
+from `https://x.com/i/api/graphql/<queryId>/<OperationName>`. The DOM is a render
+of those payloads, so intercepting them yields structured data instead of
+scraped markup — and rewriting one before it resolves changes what gets
+rendered.
+
+```
+┌─ MAIN world ──────────────┐   postMessage   ┌─ ISOLATED world ─┐   runtime   ┌──────────────┐
+│ inject.js                 │ ──────────────► │ bridge.js        │ ──────────► │ background.js│
+│ patches fetch + XHR       │ ◄────────────── │ relays config    │             │ dedupe+store │
+└───────────────────────────┘                 └──────────────────┘             └──────────────┘
+```
+
+Two content scripts are required: a MAIN-world script can touch the page's real
+`window` but has **no** `chrome.*` APIs, while an ISOLATED one has the APIs but
+its own separate `window`.
+
+### Why not `chrome.webRequest`?
+
+| Approach | Response body | Notes |
+|---|---|---|
+| `chrome.webRequest` | ❌ | MV3 removed blocking and body access |
+| `declarativeNetRequest` | ❌ | Block/redirect only |
+| `chrome.debugger` | ✅ | Works, but shows the "is debugging this browser" banner |
+| **MAIN-world `fetch` patch** | ✅ | Also allows rewriting the payload |
+
+### Layout
+
+| File | World | Role |
+|---|---|---|
+| `src/rules.js` | MAIN + pages | Shared matching: normalization, term parsing, scope matching |
+| `src/inject.js` | MAIN | Patches `fetch` and `XMLHttpRequest`; extracts and prunes |
+| `src/bridge.js` | ISOLATED | The only script with `chrome.*` access; relays both ways |
+| `src/background.js` | SW | Dedupes by tweet id, buffered writes to `chrome.storage.local` |
+| `src/popup.*` | — | Compact viewer |
+| `src/options.*` | — | Dashboard: rule editor and preview |
+
+`rules.js` loads both into the MAIN world (ahead of `inject.js`) and into the
+extension pages, so the dashboard preview scores rules with the exact code that
+prunes the timeline — the two can't drift.
+
+### Extracted shape
+
+```js
+{
+  id, username, name, userId, verified,
+  text, lang, createdAt,
+  replyCount, retweetCount, likeCount, quoteCount,
+  isRetweet, isReply, url
+}
+```
+
+## Implementation notes
+
+The things that break if you get them wrong:
+
+- **`response.clone()` before reading.** Consuming the original stream leaves the
+  page with an empty body and silently kills the timeline.
+- **`run_at: document_start`.** Inject any later and X's bundle has already
+  captured the original `fetch`; the hook never fires.
+- **Match on operation name, not query id.** The `<queryId>` hash rotates on
+  every X deploy; `HomeTimeline`, `TweetDetail`, `UserTweets`, `SearchTimeline`
+  do not.
+- **Walk the JSON, don't index paths.** Extraction recurses looking for
+  `__typename === 'Tweet'` rather than hardcoding
+  `timeline_v2.timeline.instructions[…]`, which differs per endpoint and drifts
+  between releases. This also handles the `TweetWithVisibilityResults` wrapper
+  (which nests the real tweet a level deeper) for free.
+- **Long posts live in `note_tweet`**, not `legacy.full_text` — the latter is
+  truncated at 280 chars.
+- **User fields moved.** Newer payloads put `screen_name`/`name` on `user.core`;
+  older ones use `user.legacy`. Both are read.
+- **XHR is trapped by property shadowing**, not a `load` listener. The page
+  registers its handlers before `send()`, so a listener added by the hook would
+  run *after* the body was already read. Shadowing `responseText`/`response` on
+  the instance returns the processed payload regardless of handler order.
+- **Emoji need normalizing before comparison.** Both sides are NFC-normalized and
+  stripped of variation selectors (U+FE0E/U+FE0F), so `❤️` pasted from one source
+  matches `❤` served by another. Multi-codepoint emoji — flags, skin-tone
+  variants, ZWJ sequences — compare fine as plain substrings once that's
+  handled.
+- **Pruning is per timeline entry, not per tweet.** A conversation entry carries
+  several tweets: in blocklist mode the entry dies if any tweet matches, in
+  allowlist mode it survives if any does. Cursor entries are always preserved —
+  removing one breaks pagination.
+- **Page CSP does not apply.** MAIN-world content scripts are exempt, unlike a
+  manually appended `<script src>`.
+
+## Privacy
+
+Everything stays in `chrome.storage.local` on your machine. The extension makes
+no network requests, contacts no server, and ships no analytics. Export is a
+local file download. Uninstalling, or **Clear store**, removes the data.
+
+## Limits
+
+- Only sees what the tab actually requests — this is not a crawler
+- Capture store is capped at 5,000 tweets, newest first
+- Filtering applies to newly loaded payloads; already-rendered posts stay put
+  until the tab reloads
+- X ships schema changes without notice; extraction is written defensively but
+  can still need updating
+
+## Disclaimer
+
+Unofficial and unaffiliated with X Corp. It reads responses your own browser
+session already received, on your own machine. Automating or modifying a service
+may conflict with its terms of service — that's on you to evaluate. Provided as
+is, with no warranty.

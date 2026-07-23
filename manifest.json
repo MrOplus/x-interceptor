@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "X Interceptor",
+  "version": "0.1.0",
+  "description": "Intercepts X/Twitter GraphQL responses and extracts tweets + usernames before they render.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_title": "X Interceptor",
+    "default_popup": "src/popup.html"
+  },
+  "options_ui": {
+    "page": "src/options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["src/rules.js", "src/inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["src/bridge.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED",
+      "all_frames": false
+    }
+  ]
+}

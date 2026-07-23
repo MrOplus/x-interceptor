@@ -1,0 +1,14 @@
+# Packaged builds
+*.zip
+*.crx
+*.pem
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dependencies (none today, but keep it out if tooling arrives)
+node_modules/
