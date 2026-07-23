@@ -28,6 +28,12 @@
       send({ type: 'tweets', url: data.url, op: data.op, tweets: data.tweets });
     } else if (data.type === 'blocked') {
       send({ type: 'blocked', count: data.count });
+    } else if (data.type === 'status') {
+      send({ type: 'status', status: data });
+    } else if (data.type === 'config-request') {
+      // The hook retries this until answered, so an unlucky injection order
+      // can't leave it stuck on defaults.
+      chrome.storage.local.get('config').then(({ config }) => pushConfig(config || {}));
     }
   });
 

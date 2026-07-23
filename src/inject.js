@@ -21,16 +21,37 @@
     blockKeywords: [],
   };
 
+  let configReceived = false;
+
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     const data = event.data;
     if (!data || data.__channel !== CHANNEL || data.type !== 'config') return;
     config = { ...config, ...data.config };
+    configReceived = true;
   });
 
   const post = (type, payload) => {
     window.postMessage({ __channel: CHANNEL, type, ...payload }, location.origin);
   };
+
+  /**
+   * Ask for the config instead of only waiting to be handed it. This world and
+   * the bridge's are injected independently at document_start with no ordering
+   * guarantee, so whichever runs second misses the other's opening message —
+   * and a lost config leaves `hideBlocked` false, silently disabling all
+   * filtering while capture (which defaults on) keeps working. Retry until the
+   * bridge answers.
+   */
+  post('config-request', {});
+  let handshakeTries = 0;
+  const handshake = setInterval(() => {
+    if (configReceived || (handshakeTries += 1) > 40) {
+      clearInterval(handshake);
+      return;
+    }
+    post('config-request', {});
+  }, 50);
 
   /** `/i/api/graphql/<queryId>/<OperationName>` — the queryId rotates, the name doesn't. */
   const operationName = (url) => {
@@ -107,12 +128,21 @@
   // dashboard preview and this hook can never disagree about what a rule does.
   const { hasRules, entryShouldGo } = globalThis.__XRules;
 
-  const PRUNABLE_ENTRY = /^(tweet|promoted|homeConversation|profile-conversation|conversationthread)-/;
+  // Replies and retweets don't live in `entries` alone: conversation threads
+  // are modules whose tweets hang off `items`, so pruning only `entries` leaves
+  // them untouched.
+  const PRUNABLE_ARRAYS = new Set(['entries', 'items', 'moduleItems']);
 
   /**
-   * Drops whole timeline entries the rules reject, so the page never receives
-   * them and React never renders them. Cursor entries are always kept —
-   * removing one breaks pagination.
+   * Drops timeline entries the rules reject, so the page never receives them
+   * and React never renders them.
+   *
+   * An entry is identified by *containing a tweet*, never by an entryId prefix:
+   * X names them differently per surface (`tweet-`, `profile-conversation-`,
+   * `home-conversation-`, `conversationthread-`, …) and adds new ones without
+   * notice, so a whitelist silently stops matching. Anything with no tweet
+   * inside — cursors, "who to follow" modules — harvests empty and is always
+   * kept, which keeps pagination safe for free.
    */
   function pruneBlocked(node, stats, seen = new Set()) {
     if (!node || typeof node !== 'object' || seen.has(node)) return;
@@ -124,11 +154,23 @@
     }
 
     for (const [key, value] of Object.entries(node)) {
-      if (key === 'entries' && Array.isArray(value)) {
+      if (PRUNABLE_ARRAYS.has(key) && Array.isArray(value)) {
         node[key] = value.filter((entry) => {
-          const entryId = String(entry?.entryId ?? '');
-          if (!PRUNABLE_ENTRY.test(entryId)) return true;
-          const remove = entryShouldGo(harvest(entry), config);
+          const before = harvest(entry).length;
+
+          // Depth-first: prune a module's own item list before judging the
+          // module, so one blocked reply costs the reply and not the thread.
+          pruneBlocked(entry, stats, seen);
+
+          const tweets = harvest(entry);
+          if (!tweets.length) {
+            // Nothing to begin with (a cursor) — keep. Emptied by the pass
+            // above — drop, or the page renders a blank card. Its items were
+            // already counted, so don't count it twice.
+            return before === 0;
+          }
+
+          const remove = entryShouldGo(tweets, config);
           if (remove) stats.removed += 1;
           return !remove;
         });
@@ -150,14 +192,36 @@
       post('tweets', { url, op, tweets });
     }
 
-    if (!config.hideBlocked || !hasRules(config)) return { body: null, tweets };
+    const filtering = Boolean(config.hideBlocked) && hasRules(config);
+    let removed = 0;
+    let body = null;
 
-    const stats = { removed: 0 };
-    pruneBlocked(json, stats);
-    if (!stats.removed) return { body: null, tweets };
+    if (filtering) {
+      const stats = { removed: 0 };
+      pruneBlocked(json, stats);
+      removed = stats.removed;
+      if (removed) {
+        body = JSON.stringify(json);
+        post('blocked', { count: removed });
+      }
+    }
 
-    post('blocked', { url, op, count: stats.removed });
-    return { body: JSON.stringify(json), tweets };
+    // Reported every payload so the dashboard can show what the hook actually
+    // believes — without it, a config that never arrived is indistinguishable
+    // from rules that simply match nothing.
+    post('status', {
+      op,
+      tweets: tweets.length,
+      removed,
+      filtering,
+      configReceived,
+      rules:
+        (config.blockNames?.length || 0) +
+        (config.blockUsers?.length || 0) +
+        (config.blockKeywords?.length || 0),
+    });
+
+    return { body, tweets };
   }
 
   // --------------------------------------------------------------- fetch patch

@@ -7,6 +7,7 @@ const send = (message) => chrome.runtime.sendMessage(message);
 let tweets = [];
 let saved = { ...DEFAULT_CONFIG };
 let blockedCount = 0;
+let lastStatus = null;
 let view = 'all';
 let visible = [];
 
@@ -44,6 +45,7 @@ async function load() {
   tweets = state.tweets || [];
   saved = { ...DEFAULT_CONFIG, ...state.config };
   blockedCount = state.blockedCount || 0;
+  lastStatus = state.lastStatus || null;
 
   $('capture').checked = Boolean(saved.capture);
   $('hideBlocked').checked = Boolean(saved.hideBlocked);
@@ -58,6 +60,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.tweets) tweets = changes.tweets.newValue || [];
   if (changes.blockedCount) blockedCount = changes.blockedCount.newValue || 0;
+  if (changes.lastStatus) {
+    lastStatus = changes.lastStatus.newValue || null;
+    renderHookStatus();
+  }
   if (changes.config) {
     const next = { ...DEFAULT_CONFIG, ...changes.config.newValue };
     // Never stomp rules the user is mid-edit; only sync the header toggles.
@@ -117,6 +123,7 @@ function render() {
   renderSummary(scored, draft, active);
   renderTermHits(draft);
   renderDirty();
+  renderHookStatus();
 
   const predicate = buildPredicate($('search').value);
   let rows = predicate ? scored.filter((r) => predicate(r.tweet)) : scored;
@@ -159,6 +166,56 @@ function renderSummary(scored, draft, active) {
         : '— preview only, "Filter before render" is off'
     )
   );
+}
+
+const ago = (ts) => {
+  const secs = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.round(secs / 60)}m ago`;
+  return `${Math.round(secs / 3600)}h ago`;
+};
+
+/**
+ * What the in-page hook actually believes, as opposed to what's saved here.
+ * A saved rule that never reached the content script looks identical to a rule
+ * that matches nothing, and this is the only thing that tells them apart.
+ */
+function renderHookStatus() {
+  const dot = document.querySelector('#hookbar .dot');
+  const text = $('hookText');
+  dot.className = 'dot';
+
+  if (!lastStatus) {
+    dot.classList.add('warn');
+    text.textContent =
+      'Hook has not reported yet — open or reload an x.com tab (the hook only installs at page load).';
+    return;
+  }
+
+  const parts = [
+    lastStatus.op || 'payload',
+    `${lastStatus.tweets} tweets`,
+    `${lastStatus.removed} pruned`,
+    `${lastStatus.rules} rules live`,
+    ago(lastStatus.at),
+  ];
+
+  if (!lastStatus.configReceived) {
+    dot.classList.add('warn');
+    parts.push('— hook never received config, reload the x.com tab');
+  } else if (saved.hideBlocked && !lastStatus.filtering) {
+    dot.classList.add('warn');
+    parts.push(
+      saved.blockNames?.length || saved.blockUsers?.length || saved.blockKeywords?.length
+        ? '— rules not live in the page yet, reload the x.com tab'
+        : '— no saved rules (did you press Save?)'
+    );
+  } else if (lastStatus.filtering) {
+    dot.classList.add('ok');
+    parts.push('— filtering active');
+  }
+
+  text.textContent = `Hook: ${parts.join(' · ')}`;
 }
 
 function pill(text, cls) {

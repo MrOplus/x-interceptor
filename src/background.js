@@ -20,6 +20,21 @@ const DEFAULT_CONFIG = {
 let buffer = [];
 let flushTimer = null;
 
+/** Latest hook report, throttled — a busy timeline fires several GraphQL calls
+ *  a second and each one reports. */
+let pendingStatus = null;
+let statusTimer = null;
+
+function writeStatus(status) {
+  if (!status) return;
+  pendingStatus = { ...status, at: Date.now() };
+  if (statusTimer) return;
+  statusTimer = setTimeout(() => {
+    statusTimer = null;
+    chrome.storage.local.set({ lastStatus: pendingStatus });
+  }, 1000);
+}
+
 /** Serialized read-modify-write; the counter lives in storage because the
  *  service worker is evicted between bursts of activity. */
 let blockedWrite = Promise.resolve();
@@ -46,6 +61,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       bumpBlocked(message.count);
       return false;
 
+    case 'status':
+      writeStatus(message.status);
+      return false;
+
     case 'getState':
       (async () => {
         await flush();
@@ -54,8 +73,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           tweets = [],
           config = DEFAULT_CONFIG,
           blockedCount = 0,
-        } = await chrome.storage.local.get(['tweets', 'config', 'blockedCount']);
-        sendResponse({ tweets, config, blockedCount });
+          lastStatus = null,
+        } = await chrome.storage.local.get([
+          'tweets',
+          'config',
+          'blockedCount',
+          'lastStatus',
+        ]);
+        sendResponse({ tweets, config, blockedCount, lastStatus });
       })();
       return true;
 

@@ -182,12 +182,52 @@ The things that break if you get them wrong:
   matches `❤` served by another. Multi-codepoint emoji — flags, skin-tone
   variants, ZWJ sequences — compare fine as plain substrings once that's
   handled.
-- **Pruning is per timeline entry, not per tweet.** A conversation entry carries
-  several tweets: in blocklist mode the entry dies if any tweet matches, in
-  allowlist mode it survives if any does. Cursor entries are always preserved —
-  removing one breaks pagination.
+- **Identify entries by content, not by `entryId` prefix.** X names them
+  differently per surface (`tweet-`, `profile-conversation-`,
+  `conversationthread-`, …) and adds new ones without notice, so a prefix
+  whitelist silently stops matching. Pruning instead asks "does this entry
+  contain a tweet?" — cursors and "who to follow" modules harvest empty and are
+  always kept, which keeps pagination safe for free.
+- **Replies live in `items`, not `entries`.** Conversation threads are modules
+  with their own nested item list; pruning only `entries` leaves every reply
+  untouched. Pruning runs depth-first so one blocked reply costs the reply
+  rather than the whole thread, and a module emptied by that pass is dropped so
+  it can't render as a blank card.
+- **Retweets carry two authors.** The outer tweet is the retweeter, with the
+  original nested under `legacy.retweeted_status_result`. Both are harvested, so
+  a rule matching either the retweeter or the original author removes the entry.
+- **Config must be pulled, not just pushed.** The MAIN and ISOLATED worlds are
+  injected independently at `document_start` with no ordering guarantee, so
+  whichever runs second misses the other's opening message. The hook requests
+  its config and retries until answered — a lost config leaves `hideBlocked`
+  false, which silently disables filtering while capture (defaulting on) keeps
+  working, making it look like the rules are wrong.
 - **Page CSP does not apply.** MAIN-world content scripts are exempt, unlike a
   manually appended `<script src>`.
+
+## Troubleshooting
+
+The dashboard's status bar reports what the in-page hook actually believes,
+which is the fastest way to tell a broken rule from a rule that never arrived:
+
+```
+Hook: UserTweets · 20 tweets · 3 pruned · 4 rules live · 2s ago — filtering active
+```
+
+| Status | Meaning |
+|---|---|
+| *Hook has not reported yet* | No x.com tab has loaded a payload since the extension was reloaded. The hook only installs at page load — reload the tab. |
+| *hook never received config* | The content script is running on stale defaults. Reload the tab. |
+| *rules not live in the page yet* | Rules are saved here but the open tab predates them. Reload the tab. |
+| *no saved rules* | The editor has unsaved edits — press **Save rules**. The preview scores drafts, so it looks like it's working before you save. |
+
+Two things that look like bugs but aren't:
+
+- **One term per line.** `💚🖤❤️` on a single line is one term matching that exact
+  contiguous sequence, not three alternatives. Put each emoji on its own line.
+  The per-term hit table shows `0` for terms that match nothing captured.
+- **Filtering applies to newly fetched payloads.** Already-rendered posts stay
+  until the tab reloads.
 
 ## Privacy
 
