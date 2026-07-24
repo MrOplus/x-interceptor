@@ -13,3 +13,4 @@ desktop.ini
 
 # Dependencies (none today, but keep it out if tooling arrives)
 node_modules/
+PUBLISHING.md
