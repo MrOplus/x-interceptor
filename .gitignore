@@ -1,4 +1,5 @@
 # Packaged builds
+x-interceptor-*.zip
 *.zip
 *.crx
 *.pem
