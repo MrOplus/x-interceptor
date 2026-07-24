@@ -209,7 +209,12 @@
       }
     }
 
-    reportStatus({ op, tweets: tweets.length, removed });
+    // Sidebar, notification and settings calls carry no tweets. Reporting them
+    // would overwrite the status bar with "0 tweets · 0 pruned" moments after a
+    // real prune, making a working hook look idle.
+    if (tweets.length || removed) {
+      reportStatus({ op, tweets: tweets.length, removed });
+    }
 
     return { body, tweets };
   }

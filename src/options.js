@@ -209,22 +209,22 @@ function renderHookStatus() {
 
   parts.push(`${lastStatus.rules} rules live`, ago(lastStatus.at), `v${version}`);
 
+  let verdict = '';
   if (!lastStatus.configReceived) {
     dot.classList.add('warn');
-    parts.push('— hook never received config, reload the x.com tab');
+    verdict = 'hook never received config, reload the x.com tab';
   } else if (saved.hideBlocked && !lastStatus.filtering) {
     dot.classList.add('warn');
-    parts.push(
+    verdict =
       saved.blockNames?.length || saved.blockUsers?.length || saved.blockKeywords?.length
-        ? '— rules not live in the page yet, reload the x.com tab'
-        : '— no saved rules (did you press Save?)'
-    );
+        ? 'rules not live in the page yet, reload the x.com tab'
+        : 'no saved rules (did you press Save?)';
   } else if (lastStatus.filtering) {
     dot.classList.add('ok');
-    parts.push('— filtering active');
+    verdict = 'filtering active';
   }
 
-  text.textContent = `Hook: ${parts.join(' · ')}`;
+  text.textContent = `Hook: ${parts.join(' · ')}${verdict ? ` — ${verdict}` : ''}`;
 }
 
 function pill(text, cls) {
