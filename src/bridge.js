@@ -29,7 +29,13 @@
     } else if (data.type === 'blocked') {
       send({ type: 'blocked', count: data.count });
     } else if (data.type === 'status') {
-      send({ type: 'status', status: data });
+      // Stamped here because the MAIN world has no chrome.* access. Content
+      // scripts survive an extension reload until the tab is refreshed, so a
+      // version older than the manifest's means the page is running stale code.
+      send({
+        type: 'status',
+        status: { ...data, version: chrome.runtime.getManifest().version },
+      });
     } else if (data.type === 'config-request') {
       // The hook retries this until answered, so an unlucky injection order
       // can't leave it stuck on defaults.

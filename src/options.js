@@ -185,10 +185,21 @@ function renderHookStatus() {
   const text = $('hookText');
   dot.className = 'dot';
 
+  const version = chrome.runtime.getManifest().version;
+
   if (!lastStatus) {
     dot.classList.add('warn');
     text.textContent =
-      'Hook has not reported yet — open or reload an x.com tab (the hook only installs at page load).';
+      `Extension v${version} · hook has not reported yet — open or reload an x.com tab ` +
+      '(the hook only installs at page load, so an already-open tab keeps running the old code).';
+    return;
+  }
+
+  if (lastStatus.version && lastStatus.version !== version) {
+    dot.classList.add('warn');
+    text.textContent =
+      `Extension v${version} but the page is running v${lastStatus.version} — ` +
+      'reload the x.com tab to pick up the new code.';
     return;
   }
 
@@ -196,7 +207,7 @@ function renderHookStatus() {
     ? [lastStatus.op, `${lastStatus.tweets} tweets`, `${lastStatus.removed} pruned`]
     : ['installed, no payload fetched yet'];
 
-  parts.push(`${lastStatus.rules} rules live`, ago(lastStatus.at));
+  parts.push(`${lastStatus.rules} rules live`, ago(lastStatus.at), `v${version}`);
 
   if (!lastStatus.configReceived) {
     dot.classList.add('warn');
