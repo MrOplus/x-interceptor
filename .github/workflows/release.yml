@@ -24,16 +24,12 @@ jobs:
 
       - name: Fail early if store secrets are missing
         env:
-          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
           EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
         run: |
           missing=""
-          [ -z "$CLIENT_ID" ]     && missing="$missing CWS_CLIENT_ID"
-          [ -z "$CLIENT_SECRET" ] && missing="$missing CWS_CLIENT_SECRET"
-          [ -z "$REFRESH_TOKEN" ] && missing="$missing CWS_REFRESH_TOKEN"
-          [ -z "$EXTENSION_ID" ]  && missing="$missing CWS_EXTENSION_ID"
+          [ -z "$SERVICE_ACCOUNT_KEY" ] && missing="$missing CWS_SERVICE_ACCOUNT_KEY"
+          [ -z "$EXTENSION_ID" ]        && missing="$missing CWS_EXTENSION_ID"
           if [ -n "$missing" ]; then
             echo "::error::Missing repo secrets:$missing — see PUBLISHING.md"
             exit 1
@@ -58,9 +54,7 @@ jobs:
 
       - name: Upload and submit to Chrome Web Store
         env:
-          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          CWS_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
           EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
           # Tag pushes always publish; manual runs honour the checkbox.
           PUBLISH: ${{ github.event.inputs.publish != 'false' }}
@@ -69,15 +63,10 @@ jobs:
 
           json() { node -p "JSON.parse(require('fs').readFileSync(0,'utf8'))$1"; }
 
-          echo "Exchanging refresh token for an access token..."
-          ACCESS_TOKEN=$(curl -s -X POST https://oauth2.googleapis.com/token \
-            -d "client_id=$CLIENT_ID" \
-            -d "client_secret=$CLIENT_SECRET" \
-            -d "refresh_token=$REFRESH_TOKEN" \
-            -d "grant_type=refresh_token" | json ".access_token")
-
-          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "undefined" ]; then
-            echo "::error::Could not obtain an access token. The refresh token may have expired (see the 'In production' note in PUBLISHING.md)."
+          echo "Minting an access token from the service-account key..."
+          ACCESS_TOKEN=$(node scripts/cws-access-token.mjs)
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "::error::Could not obtain an access token (see the message above)."
             exit 1
           fi
 
