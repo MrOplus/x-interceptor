@@ -63,8 +63,26 @@ jobs:
 
           json() { node -p "JSON.parse(require('fs').readFileSync(0,'utf8'))$1"; }
 
+          # Mint a short-lived access token from the service-account key via the
+          # JWT-bearer grant. Inlined (Node's crypto only, no deps) so the whole
+          # release lives in this one file.
           echo "Minting an access token from the service-account key..."
-          ACCESS_TOKEN=$(node scripts/cws-access-token.mjs)
+          ACCESS_TOKEN=$(node --input-type=module <<'NODE'
+          import { createSign } from 'node:crypto';
+          const key = JSON.parse(process.env.CWS_SERVICE_ACCOUNT_KEY);
+          const b64url = (i) => Buffer.from(i).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          const tokenUri = key.token_uri || 'https://oauth2.googleapis.com/token';
+          const now = Math.floor(Date.now() / 1000);
+          const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+          const claims = b64url(JSON.stringify({ iss: key.client_email, scope: 'https://www.googleapis.com/auth/chromewebstore', aud: tokenUri, iat: now, exp: now + 3600 }));
+          const input = `${header}.${claims}`;
+          const sig = createSign('RSA-SHA256').update(input).sign(key.private_key).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+          const resp = await fetch(tokenUri, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${input}.${sig}` }) });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok || !data.access_token) { console.error(`Token exchange failed (HTTP ${resp.status}): ${JSON.stringify(data)}. Check the service-account email is added under dashboard Account and the Chrome Web Store API is enabled.`); process.exit(1); }
+          process.stdout.write(data.access_token);
+          NODE
+          )
           if [ -z "$ACCESS_TOKEN" ]; then
             echo "::error::Could not obtain an access token (see the message above)."
             exit 1
