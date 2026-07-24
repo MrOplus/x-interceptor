@@ -19,6 +19,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Everything below uses only tools preinstalled on the runner: jq, openssl,
+    # curl, zip. No Node, no third-party actions.
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +40,7 @@ jobs:
       - name: Verify the tag matches manifest.json version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          manifest_version=$(node -p "require('./manifest.json').version")
+          manifest_version=$(jq -r '.version' manifest.json)
           tag_version="${GITHUB_REF_NAME#v}"
           echo "manifest=$manifest_version  tag=$tag_version"
           if [ "$manifest_version" != "$tag_version" ]; then
@@ -61,33 +63,36 @@ jobs:
         run: |
           set -euo pipefail
 
-          json() { node -p "JSON.parse(require('fs').readFileSync(0,'utf8'))$1"; }
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 
-          # Mint a short-lived access token from the service-account key via the
-          # JWT-bearer grant. Inlined (Node's crypto only, no deps) so the whole
-          # release lives in this one file.
+          # --- mint a short-lived access token from the service-account key ---
+          # Sign a JWT-bearer assertion (RS256) and exchange it. The private key
+          # goes to a temp file for `openssl` and is wiped on exit.
           echo "Minting an access token from the service-account key..."
-          ACCESS_TOKEN=$(node --input-type=module <<'NODE'
-          import { createSign } from 'node:crypto';
-          const key = JSON.parse(process.env.CWS_SERVICE_ACCOUNT_KEY);
-          const b64url = (i) => Buffer.from(i).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-          const tokenUri = key.token_uri || 'https://oauth2.googleapis.com/token';
-          const now = Math.floor(Date.now() / 1000);
-          const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
-          const claims = b64url(JSON.stringify({ iss: key.client_email, scope: 'https://www.googleapis.com/auth/chromewebstore', aud: tokenUri, iat: now, exp: now + 3600 }));
-          const input = `${header}.${claims}`;
-          const sig = createSign('RSA-SHA256').update(input).sign(key.private_key).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-          const resp = await fetch(tokenUri, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${input}.${sig}` }) });
-          const data = await resp.json().catch(() => ({}));
-          if (!resp.ok || !data.access_token) { console.error(`Token exchange failed (HTTP ${resp.status}): ${JSON.stringify(data)}. Check the service-account email is added under dashboard Account and the Chrome Web Store API is enabled.`); process.exit(1); }
-          process.stdout.write(data.access_token);
-          NODE
-          )
+          PK=$(mktemp)
+          trap 'rm -f "$PK"' EXIT
+          jq -r '.private_key' <<< "$CWS_SERVICE_ACCOUNT_KEY" > "$PK"
+          client_email=$(jq -r '.client_email' <<< "$CWS_SERVICE_ACCOUNT_KEY")
+          token_uri=$(jq -r '.token_uri // "https://oauth2.googleapis.com/token"' <<< "$CWS_SERVICE_ACCOUNT_KEY")
+
+          now=$(date +%s)
+          header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          claims=$(printf '%s' "{\"iss\":\"$client_email\",\"scope\":\"https://www.googleapis.com/auth/chromewebstore\",\"aud\":\"$token_uri\",\"iat\":$now,\"exp\":$((now + 3600))}" | b64url)
+          signing_input="${header}.${claims}"
+          signature=$(printf '%s' "$signing_input" | openssl dgst -sha256 -sign "$PK" -binary | b64url)
+          jwt="${signing_input}.${signature}"
+
+          token_resp=$(curl -s -X POST "$token_uri" \
+            --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
+            --data-urlencode "assertion=$jwt")
+          ACCESS_TOKEN=$(jq -r '.access_token // empty' <<< "$token_resp")
           if [ -z "$ACCESS_TOKEN" ]; then
-            echo "::error::Could not obtain an access token (see the message above)."
+            echo "::error::Token exchange failed: $token_resp"
+            echo "Confirm the service-account email is added under dashboard Account and the Chrome Web Store API is enabled in the same GCP project."
             exit 1
           fi
 
+          # --- upload the new package ---
           echo "Uploading extension.zip to item $EXTENSION_ID ..."
           UPLOAD=$(curl -s \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
@@ -95,13 +100,14 @@ jobs:
             -X PUT -T extension.zip \
             "https://www.googleapis.com/upload/chromewebstore/v1.1/items/$EXTENSION_ID")
           echo "$UPLOAD"
-          STATE=$(echo "$UPLOAD" | json ".uploadState")
+          STATE=$(jq -r '.uploadState // empty' <<< "$UPLOAD")
           if [ "$STATE" != "SUCCESS" ]; then
             echo "::error::Upload did not succeed (uploadState=$STATE). See the response above."
             exit 1
           fi
           echo "Upload succeeded."
 
+          # --- publish (or leave as a draft) ---
           if [ "$PUBLISH" = "true" ]; then
             echo "Submitting for review / publishing..."
             PUB=$(curl -s \
@@ -111,7 +117,7 @@ jobs:
               -X POST \
               "https://www.googleapis.com/chromewebstore/v1.1/items/$EXTENSION_ID/publish")
             echo "$PUB"
-            STATUS=$(echo "$PUB" | json ".status.join(',')" 2>/dev/null || echo "")
+            STATUS=$(jq -r '.status // [] | join(",")' <<< "$PUB")
             echo "Publish status: $STATUS"
             case "$STATUS" in
               *ERROR*|*NOT_AUTHORIZED*)
