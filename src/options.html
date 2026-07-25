@@ -277,6 +277,13 @@
           Blank lines and lines starting with <code>#</code> are ignored.
         </div>
 
+        <div class="row" style="margin-top: 14px">
+          <button id="exportRules">Export rules</button>
+          <button id="importRules">Import rules</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden />
+          <span id="rulesIo" class="hint" style="margin-top: 0"></span>
+        </div>
+
         <div class="sticky-actions row">
           <button class="primary" id="save" disabled>Save rules</button>
           <button id="revert" disabled>Revert</button>

@@ -21,6 +21,7 @@ reach React at all.
 - **Live rule preview** — score draft rules against everything already captured
   before saving them
 - **Scoped search + JSON export** over the capture store
+- **Export / import rules** — back up your rule set or share it as a JSON file
 - **Fully local** — no servers, no telemetry, no network requests of its own
 
 ## Install
@@ -73,6 +74,13 @@ nothing is filtered in either mode, so allowlist mode can't accidentally empty
 your timeline.
 
 Rules only take effect on live traffic once **Filter before render** is on.
+
+**Export / import.** *Export rules* writes your rule set to a JSON file (just the
+rules — never captured tweets or your toggles); *Import rules* loads one back in.
+An import lands in the editor as an unsaved draft, so you see the preview and
+**Save** it yourself — handy for backing up, moving rules between machines, or
+sharing a curated blocklist. It accepts both the exported file and a bare
+`{ matchMode, blockNames, blockUsers, blockKeywords }` object.
 
 ### Preview
 

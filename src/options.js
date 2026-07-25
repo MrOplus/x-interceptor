@@ -418,6 +418,92 @@ $('export').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
+// ------------------------------------------------------------ export/import rules
+
+const RULES_FORMAT = 'x-interceptor-rules';
+
+const download = (filename, text) => {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+function setIo(message, isError = false) {
+  const el = $('rulesIo');
+  el.textContent = message;
+  el.style.color = isError ? 'var(--hit)' : 'var(--muted)';
+}
+
+// Exports the rules as currently typed (the draft), so "edit then export" works
+// without saving first. Only the rule set travels — never captured tweets or the
+// capture/filter toggles.
+$('exportRules').addEventListener('click', () => {
+  const draft = draftConfig();
+  const rules = pickRules(draft);
+  const count = rules.blockNames.length + rules.blockUsers.length + rules.blockKeywords.length;
+  download(
+    'x-interceptor-rules.json',
+    JSON.stringify({ format: RULES_FORMAT, version: 1, exportedAt: new Date().toISOString(), rules }, null, 2)
+  );
+  setIo(`Exported ${count} term${count === 1 ? '' : 's'}.`);
+});
+
+$('importRules').addEventListener('click', () => $('importFile').click());
+
+$('importFile').addEventListener('change', (event) => {
+  const file = event.target.files[0];
+  event.target.value = ''; // let the same file re-trigger 'change' next time
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onerror = () => setIo('Could not read that file.', true);
+  reader.onload = () => {
+    let rules;
+    try {
+      rules = sanitizeImportedRules(JSON.parse(reader.result));
+    } catch (err) {
+      setIo(err.message || 'Invalid rules file.', true);
+      return;
+    }
+    // Import loads into the editor as an unsaved draft — the user sees the
+    // preview and Saves (or Reverts). Guard an in-progress edit first.
+    if (isDirty() && !confirm('Replace your unsaved rule edits with the imported file?')) return;
+
+    $('matchMode').value = rules.matchMode;
+    $('blockNames').value = formatTerms(rules.blockNames);
+    $('blockUsers').value = formatTerms(rules.blockUsers);
+    $('blockKeywords').value = formatTerms(rules.blockKeywords);
+    render();
+
+    const total = rules.blockNames.length + rules.blockUsers.length + rules.blockKeywords.length;
+    setIo(`Imported ${total} term${total === 1 ? '' : 's'} — review the preview and Save.`);
+  };
+  reader.readAsText(file);
+});
+
+/** Accepts either the exported envelope or a bare rules object; coerces every
+ *  field to the expected shape and rejects anything unrecognizable. */
+function sanitizeImportedRules(parsed) {
+  if (!parsed || typeof parsed !== 'object') throw new Error('Not a rules file.');
+  const src = parsed.rules && typeof parsed.rules === 'object' ? parsed.rules : parsed;
+
+  const list = (value) =>
+    Array.isArray(value) ? value.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean) : [];
+
+  const hasAnyList = ['blockNames', 'blockUsers', 'blockKeywords'].some((k) => Array.isArray(src[k]));
+  if (!hasAnyList) throw new Error('No rule lists found in that file.');
+
+  return {
+    matchMode: src.matchMode === 'keep' ? 'keep' : 'block',
+    blockNames: list(src.blockNames),
+    blockUsers: list(src.blockUsers),
+    blockKeywords: list(src.blockKeywords),
+  };
+}
+
 window.addEventListener('beforeunload', (event) => {
   if (!isDirty()) return;
   event.preventDefault();
