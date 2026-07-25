@@ -1,0 +1,78 @@
+name: Build CRX
+
+# Packs a signed .crx on every push to main that touches the extension, and
+# uploads it as a downloadable artifact. Uses only tools already on the runner
+# (google-chrome, jq, openssl) — no Node, no third-party actions beyond GitHub's
+# own checkout/upload-artifact.
+on:
+  push:
+    branches: [main]
+    paths:
+      - manifest.json
+      - "src/**"
+      - "icons/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Provision the signing key
+        env:
+          CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "$CRX_PRIVATE_KEY" ]; then
+            printf '%s' "$CRX_PRIVATE_KEY" > key.pem
+            echo "Signing with CRX_PRIVATE_KEY (stable extension ID)."
+          else
+            openssl genrsa 2048 > key.pem 2>/dev/null
+            echo "::warning::CRX_PRIVATE_KEY secret is not set — generated an ephemeral key, so the CRX's ID changes every build. Set CRX_PRIVATE_KEY for a stable ID."
+          fi
+          chmod 600 key.pem
+
+      - name: Pack the CRX
+        run: |
+          set -euo pipefail
+
+          command -v google-chrome >/dev/null \
+            || { echo "::error::google-chrome not found on the runner."; exit 1; }
+
+          # Pack a clean copy so nothing but the shipped files ends up inside.
+          rm -rf staging
+          mkdir staging
+          cp -r manifest.json src icons staging/
+
+          # xvfb-run supplies a virtual display (Chrome may want one even to
+          # pack); `|| true` because --pack-extension can exit non-zero even on
+          # success, so we judge by whether the .crx appeared, not the code.
+          xvfb-run -a google-chrome --no-sandbox \
+            --pack-extension="$PWD/staging" \
+            --pack-extension-key="$PWD/key.pem" || true
+
+          if [ ! -f staging.crx ]; then
+            echo "::error::Chrome did not produce staging.crx — see the log above."
+            exit 1
+          fi
+
+          version=$(jq -r '.version' manifest.json)
+          name="x-interceptor-$version.crx"
+          mv staging.crx "$name"
+          ls -l "$name"
+          echo "CRX_NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f key.pem
+
+      - name: Upload the CRX
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.CRX_NAME }}
+          path: ${{ env.CRX_NAME }}
+          if-no-files-found: error
