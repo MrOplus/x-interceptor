@@ -27,6 +27,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Don't build or attach a CRX for code that fails its tests.
+      - name: Run tests
+        run: node --test tests/*.test.mjs
+
       - name: Provision the signing key
         env:
           CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}

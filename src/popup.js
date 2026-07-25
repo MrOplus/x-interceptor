@@ -1,4 +1,4 @@
-const { norm } = globalThis.__XRules;
+const { buildPredicate } = globalThis.__XRules;
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
@@ -11,32 +11,6 @@ async function load() {
   $('capture').checked = Boolean(state.config.capture);
   $('hideBlocked').checked = Boolean(state.config.hideBlocked);
   render();
-}
-
-/** `name:🚀` / `text:airdrop` / `@handle` / bare term (matches any field). */
-function buildPredicate(raw) {
-  const query = String(raw).trim();
-  if (!query) return null;
-
-  const scoped = /^(name|text|user|handle)\s*:\s*(.+)$/is.exec(query);
-  if (scoped) {
-    const needle = norm(scoped[2]);
-    const field = scoped[1].toLowerCase();
-    if (field === 'name') return (t) => norm(t.name).includes(needle);
-    if (field === 'text') return (t) => norm(t.text).includes(needle);
-    return (t) => norm(t.username).includes(needle);
-  }
-
-  if (query.startsWith('@')) {
-    const needle = norm(query.slice(1));
-    return (t) => norm(t.username).includes(needle);
-  }
-
-  const needle = norm(query);
-  return (t) =>
-    norm(t.username).includes(needle) ||
-    norm(t.name).includes(needle) ||
-    norm(t.text).includes(needle);
 }
 
 function render() {

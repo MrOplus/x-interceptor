@@ -25,6 +25,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A failing test here stops the job before anything reaches the store.
+      - name: Run tests
+        run: node --test tests/*.test.mjs
+
       - name: Fail early if store secrets are missing
         env:
           SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}

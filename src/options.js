@@ -1,5 +1,14 @@
-const { DEFAULT_CONFIG, norm, parseTerms, formatTerms, hasRules, matchScopes, termHits } =
-  globalThis.__XRules;
+const {
+  DEFAULT_CONFIG,
+  norm,
+  parseTerms,
+  formatTerms,
+  hasRules,
+  matchScopes,
+  termHits,
+  buildPredicate,
+  sanitizeRules,
+} = globalThis.__XRules;
 
 const $ = (id) => document.getElementById(id);
 const send = (message) => chrome.runtime.sendMessage(message);
@@ -80,34 +89,6 @@ const pickRules = (config) => ({
   blockUsers: config.blockUsers,
   blockKeywords: config.blockKeywords,
 });
-
-// --------------------------------------------------------------------- search
-
-/** `name:🚀` / `text:airdrop` / `@handle` / bare term (matches any field). */
-function buildPredicate(raw) {
-  const query = String(raw).trim();
-  if (!query) return null;
-
-  const scoped = /^(name|text|user|handle)\s*:\s*(.+)$/is.exec(query);
-  if (scoped) {
-    const needle = norm(scoped[2]);
-    const field = scoped[1].toLowerCase();
-    if (field === 'name') return (t) => norm(t.name).includes(needle);
-    if (field === 'text') return (t) => norm(t.text).includes(needle);
-    return (t) => norm(t.username).includes(needle);
-  }
-
-  if (query.startsWith('@')) {
-    const needle = norm(query.slice(1));
-    return (t) => norm(t.username).includes(needle);
-  }
-
-  const needle = norm(query);
-  return (t) =>
-    norm(t.username).includes(needle) ||
-    norm(t.name).includes(needle) ||
-    norm(t.text).includes(needle);
-}
 
 // --------------------------------------------------------------------- render
 
@@ -463,7 +444,7 @@ $('importFile').addEventListener('change', (event) => {
   reader.onload = () => {
     let rules;
     try {
-      rules = sanitizeImportedRules(JSON.parse(reader.result));
+      rules = sanitizeRules(JSON.parse(reader.result));
     } catch (err) {
       setIo(err.message || 'Invalid rules file.', true);
       return;
@@ -483,26 +464,6 @@ $('importFile').addEventListener('change', (event) => {
   };
   reader.readAsText(file);
 });
-
-/** Accepts either the exported envelope or a bare rules object; coerces every
- *  field to the expected shape and rejects anything unrecognizable. */
-function sanitizeImportedRules(parsed) {
-  if (!parsed || typeof parsed !== 'object') throw new Error('Not a rules file.');
-  const src = parsed.rules && typeof parsed.rules === 'object' ? parsed.rules : parsed;
-
-  const list = (value) =>
-    Array.isArray(value) ? value.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean) : [];
-
-  const hasAnyList = ['blockNames', 'blockUsers', 'blockKeywords'].some((k) => Array.isArray(src[k]));
-  if (!hasAnyList) throw new Error('No rule lists found in that file.');
-
-  return {
-    matchMode: src.matchMode === 'keep' ? 'keep' : 'block',
-    blockNames: list(src.blockNames),
-    blockUsers: list(src.blockUsers),
-    blockKeywords: list(src.blockKeywords),
-  };
-}
 
 window.addEventListener('beforeunload', (event) => {
   if (!isDirty()) return;

@@ -247,6 +247,27 @@ Two things that look like bugs but aren't:
   your rules against the whole capture store, most of which was captured before
   filtering was on. The preview number being far larger is expected.
 
+## Tests
+
+A dependency-free suite (Node's built-in `node:test`, no `npm install`) guards
+the logic before every publish:
+
+```bash
+node --test tests/*.test.mjs     # or: npm test
+```
+
+- `tests/rules.test.mjs` — matching, emoji normalization, search predicate, and
+  import sanitizing
+- `tests/inject.test.mjs` — drives the **real** hook against synthetic GraphQL
+  payloads: harvesting, retweet/reply pruning, the config handshake, status
+  reporting
+- `tests/manifest.test.mjs` — MV3 shape, every referenced file exists, `rules.js`
+  loads before `inject.js`, and `package.json`/manifest versions stay in sync
+
+CI runs the suite on every push and pull request, and the release and CRX
+workflows run it as a **gate** — a red suite blocks both the store upload and the
+CRX build, so a broken build can't ship.
+
 ## Privacy
 
 Everything stays in `chrome.storage.local` on your machine. The extension makes

@@ -106,6 +106,65 @@
     return out;
   }
 
+  /**
+   * Turns a search box query into a tweet predicate. Shared by the popup and
+   * dashboard so their search behaves identically:
+   *   `name:🚀` / `text:airdrop` / `@handle` scope to one field;
+   *   a bare term matches handle, name or text.
+   * Returns null for an empty query (meaning "match everything").
+   */
+  function buildPredicate(raw) {
+    const query = String(raw ?? '').trim();
+    if (!query) return null;
+
+    const scoped = /^(name|text|user|handle)\s*:\s*(.+)$/is.exec(query);
+    if (scoped) {
+      const needle = norm(scoped[2]);
+      const field = scoped[1].toLowerCase();
+      if (field === 'name') return (t) => norm(t.name).includes(needle);
+      if (field === 'text') return (t) => norm(t.text).includes(needle);
+      return (t) => norm(t.username).includes(needle);
+    }
+
+    if (query.startsWith('@')) {
+      const needle = norm(query.slice(1));
+      return (t) => norm(t.username).includes(needle);
+    }
+
+    const needle = norm(query);
+    return (t) =>
+      norm(t.username).includes(needle) ||
+      norm(t.name).includes(needle) ||
+      norm(t.text).includes(needle);
+  }
+
+  /**
+   * Validates and normalizes an imported rules file. Accepts the exported
+   * envelope ({ rules: {...} }) or a bare rules object, coerces every field,
+   * and throws on anything unrecognizable.
+   */
+  function sanitizeRules(parsed) {
+    if (!parsed || typeof parsed !== 'object') throw new Error('Not a rules file.');
+    const src = parsed.rules && typeof parsed.rules === 'object' ? parsed.rules : parsed;
+
+    const list = (value) =>
+      Array.isArray(value)
+        ? value.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean)
+        : [];
+
+    const hasAnyList = ['blockNames', 'blockUsers', 'blockKeywords'].some((k) =>
+      Array.isArray(src[k])
+    );
+    if (!hasAnyList) throw new Error('No rule lists found in that file.');
+
+    return {
+      matchMode: src.matchMode === 'keep' ? 'keep' : 'block',
+      blockNames: list(src.blockNames),
+      blockUsers: list(src.blockUsers),
+      blockKeywords: list(src.blockKeywords),
+    };
+  }
+
   globalThis.__XRules = {
     DEFAULT_CONFIG,
     norm,
@@ -116,5 +175,7 @@
     matchesRules,
     entryShouldGo,
     termHits,
+    buildPredicate,
+    sanitizeRules,
   };
 })();

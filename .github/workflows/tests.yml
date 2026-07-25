@@ -1,0 +1,19 @@
+name: Tests
+
+# Fast feedback on every push and pull request. The release and CRX workflows
+# also run this same suite as a gate, so nothing ships if it fails.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --version
+      - run: node --test tests/*.test.mjs
