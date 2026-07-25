@@ -7,6 +7,8 @@ the page renders them**.
 No scraping the DOM, no flicker from post-render removal — filtered posts never
 reach React at all.
 
+**[▶ Install from the Chrome Web Store](https://chromewebstore.google.com/detail/kdhclnfedoikiepdjnlebkhjaojhglcl)**
+
 ## Features
 
 - **Structured capture** — tweets, authors, engagement counts and timestamps
@@ -23,7 +25,10 @@ reach React at all.
 
 ## Install
 
-Not on the Chrome Web Store. Load it unpacked:
+**From the Chrome Web Store (recommended):**
+<https://chromewebstore.google.com/detail/kdhclnfedoikiepdjnlebkhjaojhglcl>
+
+**Unpacked, from source** (for development or the latest unreleased changes):
 
 1. Clone this repo
 2. Open `chrome://extensions` and enable **Developer mode**
