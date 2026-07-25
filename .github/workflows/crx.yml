@@ -1,9 +1,10 @@
 name: Build CRX
 
-# Packs a signed .crx on every push to main that touches the extension, and
-# uploads it as a downloadable artifact. Uses only tools already on the runner
-# (google-chrome, jq, openssl) — no Node, no third-party actions beyond GitHub's
-# own checkout/upload-artifact.
+# Packs a signed .crx and uploads it as a workflow artifact. Runs on every push
+# to main that touches the extension, and when a GitHub Release is published —
+# in the release case it also attaches the .crx to the release. Uses only tools
+# already on the runner (google-chrome, jq, openssl) — no Node, no third-party
+# actions beyond GitHub's own checkout/upload-artifact.
 on:
   push:
     branches: [main]
@@ -11,10 +12,14 @@ on:
       - manifest.json
       - "src/**"
       - "icons/**"
+  release:
+    types: [published]
   workflow_dispatch:
 
+# contents: write is needed to attach the .crx to a release; read would suffice
+# for the other triggers.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   crx:
@@ -70,9 +75,15 @@ jobs:
         if: always()
         run: rm -f key.pem
 
-      - name: Upload the CRX
+      - name: Upload the CRX artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.CRX_NAME }}
           path: ${{ env.CRX_NAME }}
           if-no-files-found: error
+
+      - name: Attach the CRX to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "$CRX_NAME" --clobber

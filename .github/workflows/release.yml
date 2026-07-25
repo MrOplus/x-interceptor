@@ -1,11 +1,12 @@
 name: Release to Chrome Web Store
 
-# Fires when you push a version tag (e.g. `git tag v0.2.4 && git push origin v0.2.4`),
-# or manually from the Actions tab (where you can choose draft vs. publish).
+# Fires when you publish a GitHub Release (Releases -> Draft a new release ->
+# Publish), or manually from the Actions tab (where you can choose draft vs.
+# publish). The release's tag must equal the manifest version, with or without a
+# leading "v" (e.g. tag `0.2.4` or `v0.2.4` for manifest 0.2.4).
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       publish:
@@ -44,7 +45,7 @@ jobs:
           tag_version="${GITHUB_REF_NAME#v}"
           echo "manifest=$manifest_version  tag=$tag_version"
           if [ "$manifest_version" != "$tag_version" ]; then
-            echo "::error::Tag v$tag_version does not match manifest version $manifest_version. Bump manifest.json before tagging."
+            echo "::error::Release tag $tag_version does not match manifest version $manifest_version. Bump manifest.json before releasing."
             exit 1
           fi
 
