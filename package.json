@@ -1,6 +1,6 @@
 {
   "name": "x-interceptor",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Chrome extension that intercepts X/Twitter GraphQL traffic to extract and filter tweets before they render.",
   "scripts": {

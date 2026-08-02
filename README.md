@@ -21,6 +21,8 @@ reach React at all.
 - **Live rule preview** — score draft rules against everything already captured
   before saving them
 - **Scoped search + JSON export** over the capture store
+- **Matched-accounts view** — the distinct accounts your rules catch, with
+  one-click add-to-blocklist (local filtering only)
 - **Export / import rules** — back up your rule set or share it as a JSON file
 - **Fully local** — no servers, no telemetry, no network requests of its own
 
@@ -111,6 +113,22 @@ in-progress edit is never overwritten by that sync.
 
 **Export** writes whatever is on screen — search and view tab included — so
 `name:🚀` doubles as an extraction query.
+
+### Matched accounts
+
+**Matched accounts ↗** in the dashboard opens a page listing the distinct
+accounts your rules catch — how many of their captured tweets matched and which
+scopes tripped. Each row has:
+
+- **Block** — adds the handle to this extension's own filter (its `blockUsers`
+  list) so you stop seeing them. This is **local only**: it curates your feed and
+  never contacts X or acts on the account.
+- **Open on X ↗** — the account's profile, where you can block or mute *natively*
+  yourself if you want to.
+
+The page deliberately does not automate X's native block/mute — that would turn
+personal feed-filtering into bulk action against other accounts, which is both
+against X's automation rules and not what a local filter should do.
 
 ## How it works
 

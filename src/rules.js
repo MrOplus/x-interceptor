@@ -165,6 +165,40 @@
     };
   }
 
+  /**
+   * Rolls captured tweets up into the distinct accounts that match the rules —
+   * how many of their tweets matched and which scopes tripped — for the
+   * matched-accounts page. Ordered by match count, then handle.
+   */
+  function matchedAccounts(tweets, config) {
+    if (!hasRules(config)) return [];
+    const byUser = new Map();
+    for (const t of tweets || []) {
+      if (!t || !t.username) continue;
+      const scopes = matchScopes(t, config);
+      if (!scopes.length) continue;
+
+      let acct = byUser.get(t.username);
+      if (!acct) {
+        acct = {
+          username: t.username,
+          name: t.name || '',
+          userId: t.userId,
+          verified: Boolean(t.verified),
+          count: 0,
+          scopes: [],
+          sample: t.text || '',
+        };
+        byUser.set(t.username, acct);
+      }
+      acct.count += 1;
+      for (const s of scopes) if (!acct.scopes.includes(s)) acct.scopes.push(s);
+    }
+    return [...byUser.values()].sort(
+      (a, b) => b.count - a.count || a.username.localeCompare(b.username)
+    );
+  }
+
   globalThis.__XRules = {
     DEFAULT_CONFIG,
     norm,
@@ -177,5 +211,6 @@
     termHits,
     buildPredicate,
     sanitizeRules,
+    matchedAccounts,
   };
 })();

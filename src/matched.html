@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>X Interceptor — Matched accounts</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fff;
+        --panel: #f7f9f9;
+        --fg: #0f1419;
+        --muted: #536471;
+        --line: #e6e8ea;
+        --accent: #1d9bf0;
+        --hit: #f4212e;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #15202b;
+          --panel: #1c2732;
+          --fg: #f7f9f9;
+          --muted: #8b98a5;
+          --line: #2f3b47;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 22px;
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        top: 0;
+        background: var(--bg);
+        flex-wrap: wrap;
+      }
+      h1 { font-size: 16px; margin: 0; }
+      .spacer { flex: 1; }
+      .stat { color: var(--muted); font-size: 13px; }
+      .stat b { color: var(--fg); font-variant-numeric: tabular-nums; }
+      input[type="search"] {
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: inherit;
+        font: inherit;
+        min-width: 220px;
+      }
+      main { max-width: 900px; margin: 0 auto; padding: 8px 0 60px; }
+      .note { padding: 40px 22px; text-align: center; color: var(--muted); }
+      .note a { color: var(--accent); }
+
+      .acct {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 22px;
+        border-bottom: 1px solid var(--line);
+      }
+      .who { min-width: 0; flex: 1; }
+      .line1 { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+      .name { font-weight: 600; overflow-wrap: anywhere; }
+      .handle { color: var(--muted); font-size: 13px; text-decoration: none; }
+      .handle:hover { text-decoration: underline; }
+      .verified { color: var(--accent); font-size: 12px; }
+      .sample { color: var(--muted); font-size: 13px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .scopes { display: inline-flex; gap: 4px; }
+      .scope {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--fg) 10%, transparent);
+        color: var(--muted);
+      }
+      .count {
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      .actions { display: flex; gap: 8px; align-items: center; flex: none; }
+      button, a.btn {
+        padding: 5px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      button:hover, a.btn:hover { filter: brightness(0.95); }
+      button.block { border-color: var(--hit); color: var(--hit); }
+      button.blocked { border-color: var(--line); color: var(--muted); cursor: default; }
+      .hint { color: var(--muted); font-size: 12px; }
+      code {
+        font-family: ui-monospace, Consolas, monospace;
+        background: color-mix(in srgb, var(--fg) 8%, transparent);
+        border-radius: 3px;
+        padding: 0 3px;
+      }
+      .banner {
+        padding: 10px 22px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--muted);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Matched accounts</h1>
+      <span class="stat"><b id="count">0</b> accounts</span>
+      <span class="spacer"></span>
+      <input type="search" id="search" placeholder="Filter by name or @handle" />
+    </header>
+
+    <div class="banner">
+      <strong>Block</strong> adds the handle to this extension's filter so you stop
+      seeing them — it never touches your X account or the account itself. Use
+      <strong>Open on X ↗</strong> to block or mute natively yourself.
+    </div>
+
+    <main id="list"></main>
+    <script src="rules.js"></script>
+    <script src="matched.js"></script>
+  </body>
+</html>

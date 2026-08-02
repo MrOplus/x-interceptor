@@ -382,6 +382,10 @@ $('revert').addEventListener('click', () => {
   render();
 });
 
+$('matched').addEventListener('click', () => {
+  window.open(chrome.runtime.getURL('src/matched.html'), '_blank');
+});
+
 $('clear').addEventListener('click', async () => {
   if (!confirm(`Delete all ${tweets.length.toLocaleString()} captured tweets?`)) return;
   await send({ type: 'clear' });

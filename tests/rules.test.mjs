@@ -131,3 +131,32 @@ test('sanitizeRules: rejects non-objects and files with no rule lists', () => {
   assert.throws(() => R.sanitizeRules(null));
   assert.throws(() => R.sanitizeRules({ matchMode: 'block', foo: 1 }));
 });
+
+test('matchedAccounts: groups matching tweets by account with counts and scopes', () => {
+  const tweets = [
+    tw({ username: 'ann', name: 'Ann ' + ROCKET, text: 'hi' }),
+    tw({ username: 'ann', name: 'Ann ' + ROCKET, text: 'again' }),
+    tw({ username: 'bob', name: 'Bob', text: 'free airdrop' }),
+    tw({ username: 'cara', name: 'Cara', text: 'unrelated' }), // matches nothing
+  ];
+  const cfg = { matchMode: 'block', blockNames: [ROCKET], blockUsers: [], blockKeywords: ['airdrop'] };
+  const accounts = R.matchedAccounts(tweets, cfg);
+
+  assert.deepEqual(accounts.map((a) => a.username), ['ann', 'bob']); // cara excluded, ann first (2 hits)
+  assert.equal(accounts[0].count, 2);
+  assert.deepEqual(accounts[0].scopes, ['name']);
+  assert.deepEqual(accounts[1].scopes, ['text']);
+});
+
+test('matchedAccounts: returns nothing when no rules are set', () => {
+  const tweets = [tw({ username: 'ann' })];
+  assert.deepEqual(R.matchedAccounts(tweets, { matchMode: 'block' }), []);
+  assert.deepEqual(R.matchedAccounts([], { blockUsers: ['ann'] }), []);
+});
+
+test('matchedAccounts: an account can match on more than one scope', () => {
+  const tweets = [tw({ username: 'ann', name: 'Ann ' + ROCKET, text: 'airdrop' })];
+  const cfg = { blockNames: [ROCKET], blockKeywords: ['airdrop'] };
+  const [acct] = R.matchedAccounts(tweets, cfg);
+  assert.deepEqual(acct.scopes.sort(), ['name', 'text']);
+});
