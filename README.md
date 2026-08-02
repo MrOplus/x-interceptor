@@ -22,7 +22,7 @@ reach React at all.
   before saving them
 - **Scoped search + JSON export** over the capture store
 - **Matched-accounts view** — the distinct accounts your rules catch, with
-  one-click add-to-blocklist (local filtering only)
+  per-account **Block / Mute** on X (confirmed, one at a time, reversible)
 - **Export / import rules** — back up your rule set or share it as a JSON file
 - **Fully local** — no servers, no telemetry, no network requests of its own
 
@@ -120,15 +120,20 @@ in-progress edit is never overwritten by that sync.
 accounts your rules catch — how many of their captured tweets matched and which
 scopes tripped. Each row has:
 
-- **Block** — adds the handle to this extension's own filter (its `blockUsers`
-  list) so you stop seeing them. This is **local only**: it curates your feed and
-  never contacts X or acts on the account.
-- **Open on X ↗** — the account's profile, where you can block or mute *natively*
-  yourself if you want to.
+- **Mute** / **Block** — performs the real action on your own X account, using
+  your existing session. Each click asks for confirmation and acts on **one**
+  account; there is no bulk "act on all" button by design. Both are reversible
+  from X. State (Muted/Blocked) is remembered across reloads.
+- **Open ↗** — the account's profile on X.
 
-The page deliberately does not automate X's native block/mute — that would turn
-personal feed-filtering into bulk action against other accounts, which is both
-against X's automation rules and not what a local filter should do.
+The block/mute runs in the x.com page context, reusing the OAuth2Session
+credentials the extension already sees on the page's own API calls — so an x.com
+tab must be open. It is strictly one deliberate action per click.
+
+> Blocking and muting only change what *you* see and who can interact with
+> *you*; they don't harm or notify a target in the way harassment tooling would,
+> and they're undoable. Note that scripting X actions may still conflict with X's
+> automation rules — that's yours to weigh.
 
 ## How it works
 

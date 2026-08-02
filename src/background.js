@@ -32,6 +32,18 @@ function writeStatus(status) {
   chrome.storage.local.set({ lastStatus: { ...status, at: Date.now() } });
 }
 
+/** Records that the user blocked/muted an account, so the matched-accounts page
+ *  can show the acted-on state across reloads. Serialized read-modify-write. */
+let xActionWrite = Promise.resolve();
+function recordAction(userId, kind) {
+  xActionWrite = xActionWrite.then(async () => {
+    const { xActions = {} } = await chrome.storage.local.get('xActions');
+    xActions[userId] = kind;
+    await chrome.storage.local.set({ xActions });
+  });
+  return xActionWrite;
+}
+
 /** Serialized read-modify-write; the counter lives in storage because the
  *  service worker is evicted between bursts of activity. */
 let blockedWrite = Promise.resolve();
@@ -71,13 +83,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           config = DEFAULT_CONFIG,
           blockedCount = 0,
           lastStatus = null,
+          xActions = {},
         } = await chrome.storage.local.get([
           'tweets',
           'config',
           'blockedCount',
           'lastStatus',
+          'xActions',
         ]);
-        sendResponse({ tweets, config, blockedCount, lastStatus });
+        sendResponse({ tweets, config, blockedCount, lastStatus, xActions });
       })();
       return true;
 
@@ -96,6 +110,45 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         await blockedWrite;
         await chrome.storage.local.set({ tweets: [], blockedCount: 0 });
         sendResponse({ ok: true });
+      })();
+      return true;
+
+    case 'xaction':
+      // Relay a user-initiated block/mute to a content script on an open x.com
+      // tab, which has the session context to perform it. Everything is wrapped
+      // so any failure returns a real message instead of a dropped response.
+      (async () => {
+        try {
+          const tabs = await chrome.tabs.query({
+            url: ['https://x.com/*', 'https://twitter.com/*'],
+          });
+          if (!tabs.length) {
+            sendResponse({ ok: false, error: 'Open an x.com tab first, then retry.' });
+            return;
+          }
+
+          let resp;
+          try {
+            resp = await chrome.tabs.sendMessage(tabs[0].id, {
+              type: 'xaction',
+              kind: message.kind,
+              userId: message.userId,
+            });
+          } catch {
+            sendResponse({
+              ok: false,
+              error: 'Reload your x.com tab — it is running an older version of the extension — then retry.',
+            });
+            return;
+          }
+
+          if (resp?.ok) await recordAction(message.userId, message.kind);
+          sendResponse(
+            resp || { ok: false, error: 'No response from the x.com tab — reload it and retry.' }
+          );
+        } catch (err) {
+          sendResponse({ ok: false, error: 'Background error: ' + (err?.message || String(err)) });
+        }
       })();
       return true;
 

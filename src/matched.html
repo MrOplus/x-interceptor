@@ -102,7 +102,9 @@
       }
       button:hover, a.btn:hover { filter: brightness(0.95); }
       button.block { border-color: var(--hit); color: var(--hit); }
-      button.blocked { border-color: var(--line); color: var(--muted); cursor: default; }
+      button.mute { border-color: var(--muted); color: var(--muted); }
+      .done { color: var(--muted); font-size: 13px; white-space: nowrap; }
+      .err { color: var(--hit); font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; user-select: text; }
       .hint { color: var(--muted); font-size: 12px; }
       code {
         font-family: ui-monospace, Consolas, monospace;
@@ -128,9 +130,9 @@
     </header>
 
     <div class="banner">
-      <strong>Block</strong> adds the handle to this extension's filter so you stop
-      seeing them — it never touches your X account or the account itself. Use
-      <strong>Open on X ↗</strong> to block or mute natively yourself.
+      <strong>Block</strong> and <strong>Mute</strong> perform the real action on
+      your own X account, one account per click (each asks first). Both are
+      reversible from X. This page never acts on more than the account you click.
     </div>
 
     <main id="list"></main>

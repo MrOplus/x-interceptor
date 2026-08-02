@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X Interceptor",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Intercepts X/Twitter GraphQL responses and extracts tweets + usernames before they render.",
   "permissions": ["storage"],
   "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
@@ -38,7 +38,7 @@
     },
     {
       "matches": ["https://x.com/*", "https://twitter.com/*"],
-      "js": ["src/bridge.js"],
+      "js": ["src/xapi.js", "src/bridge.js"],
       "run_at": "document_start",
       "world": "ISOLATED",
       "all_frames": false

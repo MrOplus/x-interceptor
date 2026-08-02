@@ -5,14 +5,13 @@ const send = (message) => chrome.runtime.sendMessage(message);
 
 let tweets = [];
 let saved = { ...DEFAULT_CONFIG };
-
-const blockedSet = () => new Set((saved.blockUsers || []).map((u) => u.replace(/^@/, '').toLowerCase()));
-const isBlocked = (username) => blockedSet().has(username.toLowerCase());
+let xActions = {}; // { [userId]: 'block' | 'mute' } — accounts already acted on
 
 async function load() {
   const state = await send({ type: 'getState' });
   tweets = state.tweets || [];
   saved = { ...DEFAULT_CONFIG, ...state.config };
+  xActions = state.xActions || {};
   render();
 }
 
@@ -21,18 +20,56 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.tweets) tweets = changes.tweets.newValue || [];
   if (changes.config) saved = { ...DEFAULT_CONFIG, ...changes.config.newValue };
-  if (changes.tweets || changes.config) render();
+  if (changes.xActions) xActions = changes.xActions.newValue || {};
+  if (changes.tweets || changes.config || changes.xActions) render();
 });
 
-/** Adds a handle to the extension's own block list — a local filter, nothing
- *  more. It hides the account from your captured/filtered view; it does not
- *  contact X or act on the account. */
-async function blockLocally(username) {
-  if (isBlocked(username)) return;
-  const next = [...(saved.blockUsers || []), username];
-  const { config } = await send({ type: 'setConfig', config: { blockUsers: next } });
-  saved = { ...DEFAULT_CONFIG, ...config };
-  render();
+/**
+ * Performs a real, user-initiated block/mute on the account, via the user's own
+ * X session. Reversible on X. One deliberate action per click — there is no
+ * bulk "act on all" here by design.
+ */
+async function doAction(kind, acct, btn) {
+  if (!acct.userId) return;
+  const verb = kind === 'block' ? 'Block' : 'Mute';
+  if (
+    !confirm(
+      `${verb} @${acct.username} on X?\n\nThis performs a real ${kind} on your own X account. ` +
+        `You can undo it anytime from X.`
+    )
+  ) {
+    return;
+  }
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = '…';
+
+  let resp;
+  try {
+    resp = await send({ type: 'xaction', kind, userId: acct.userId, username: acct.username });
+  } catch (err) {
+    resp = { ok: false, error: err?.message || 'the extension did not respond' };
+  }
+
+  if (resp?.ok) {
+    xActions = { ...xActions, [acct.userId]: kind };
+    render();
+  } else {
+    const reason = resp?.error || 'no response — reload the x.com tab and this page, then retry';
+    console.warn('[x-interceptor] xaction failed:', reason);
+    // Show it inline (persistent + copyable) rather than a transient alert.
+    const row = btn.closest('.acct');
+    let err = row.querySelector('.err');
+    if (!err) {
+      err = document.createElement('div');
+      err.className = 'err';
+      row.querySelector('.who').append(err);
+    }
+    err.textContent = `Couldn’t ${kind}: ${reason}`;
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 function render() {
@@ -120,16 +157,33 @@ function renderAccount(acct) {
   const actions = document.createElement('div');
   actions.className = 'actions';
 
-  const blockBtn = document.createElement('button');
-  if (isBlocked(acct.username)) {
-    blockBtn.className = 'blocked';
-    blockBtn.textContent = 'Blocked';
-    blockBtn.disabled = true;
+  const acted = xActions[acct.userId]; // 'block' | 'mute' | undefined
+
+  if (acted) {
+    const done = document.createElement('span');
+    done.className = 'done';
+    done.textContent = acted === 'block' ? 'Blocked ✓' : 'Muted ✓';
+    actions.append(done);
+  } else if (!acct.userId) {
+    const na = document.createElement('span');
+    na.className = 'hint';
+    na.textContent = 'no id';
+    na.title = 'This account was captured without a user id, so it can’t be actioned.';
+    actions.append(na);
   } else {
+    const muteBtn = document.createElement('button');
+    muteBtn.className = 'mute';
+    muteBtn.textContent = 'Mute';
+    muteBtn.title = 'Mute on X (real action, reversible)';
+    muteBtn.addEventListener('click', () => doAction('mute', acct, muteBtn));
+
+    const blockBtn = document.createElement('button');
     blockBtn.className = 'block';
     blockBtn.textContent = 'Block';
-    blockBtn.title = 'Add to this extension’s filter (local only)';
-    blockBtn.addEventListener('click', () => blockLocally(acct.username));
+    blockBtn.title = 'Block on X (real action, reversible)';
+    blockBtn.addEventListener('click', () => doAction('block', acct, blockBtn));
+
+    actions.append(muteBtn, blockBtn);
   }
 
   const openX = document.createElement('a');
@@ -137,10 +191,10 @@ function renderAccount(acct) {
   openX.href = `https://x.com/${acct.username}`;
   openX.target = '_blank';
   openX.rel = 'noreferrer';
-  openX.textContent = 'Open on X ↗';
-  openX.title = 'Block or mute natively on X yourself';
+  openX.textContent = 'Open ↗';
+  openX.title = 'Open the profile on X';
 
-  actions.append(blockBtn, openX);
+  actions.append(openX);
   row.append(who, count, actions);
   return row;
 }

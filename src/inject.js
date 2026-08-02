@@ -238,12 +238,39 @@
     });
   }
 
+  // ----------------------------------------------------------- auth capture
+
+  // The block/mute endpoints need the same OAuth2Session credentials the page
+  // sends on its own API calls. We read them off requests as they pass through
+  // and forward them to the ISOLATED world, which performs the action. Cookies
+  // (auth_token) ride along automatically on the same-origin request there.
+  let lastBearer = null;
+  let lastCsrf = null;
+
+  function captureAuth(input, init) {
+    try {
+      const headers = new Headers(
+        (init && init.headers) || (input && typeof input === 'object' && input.headers) || undefined
+      );
+      const bearer = headers.get('authorization');
+      const csrf = headers.get('x-csrf-token');
+      if (bearer && csrf && (bearer !== lastBearer || csrf !== lastCsrf)) {
+        lastBearer = bearer;
+        lastCsrf = csrf;
+        post('auth', { bearer, csrf });
+      }
+    } catch {
+      /* headers not readable on this call — ignore */
+    }
+  }
+
   // --------------------------------------------------------------- fetch patch
 
   const originalFetch = window.fetch;
 
   window.fetch = async function fetch(input, init) {
     const url = typeof input === 'string' ? input : input?.url ?? String(input);
+    captureAuth(input, init);
     const response = await originalFetch.apply(this, arguments);
 
     if (!GQL_RE.test(url) || !response.ok) return response;
